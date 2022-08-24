@@ -86,6 +86,7 @@ class Chat extends StatefulWidget {
     this.usePreviewData = true,
     required this.user,
     this.userAgent,
+    required this.onRefresh,
   });
 
   /// See [Message.avatarBuilder].
@@ -115,8 +116,7 @@ class Chat extends StatefulWidget {
   final String Function(DateTime)? customDateHeaderText;
 
   /// See [Message.customMessageBuilder].
-  final Widget Function(types.CustomMessage, {required int messageWidth})?
-      customMessageBuilder;
+  final Widget Function(types.CustomMessage, {required int messageWidth})? customMessageBuilder;
 
   /// See [Message.customStatusBuilder].
   final Widget Function(types.Message message, {required BuildContext context})?
@@ -155,8 +155,7 @@ class Chat extends StatefulWidget {
   final Widget? emptyState;
 
   /// See [Message.fileMessageBuilder].
-  final Widget Function(types.FileMessage, {required int messageWidth})?
-      fileMessageBuilder;
+  final Widget Function(types.FileMessage, {required int messageWidth})? fileMessageBuilder;
 
   /// Time (in ms) between two messages when we will visually group them.
   /// Default value is 1 minute, 60000 ms. When time between two messages
@@ -170,8 +169,7 @@ class Chat extends StatefulWidget {
   final ImageGalleryOptions imageGalleryOptions;
 
   /// See [Message.imageMessageBuilder].
-  final Widget Function(types.ImageMessage, {required int messageWidth})?
-      imageMessageBuilder;
+  final Widget Function(types.ImageMessage, {required int messageWidth})? imageMessageBuilder;
 
   /// See [Input.options].
   final InputOptions inputOptions;
@@ -211,6 +209,9 @@ class Chat extends StatefulWidget {
   /// See [ChatList.onEndReached].
   final Future<void> Function()? onEndReached;
 
+  /// See [ChatList.onRefresh].
+  final Future<void> Function() onRefresh;
+
   /// See [ChatList.onEndReachedThreshold].
   final double? onEndReachedThreshold;
 
@@ -221,8 +222,7 @@ class Chat extends StatefulWidget {
   final void Function(BuildContext context, types.Message)? onMessageLongPress;
 
   /// See [Message.onMessageStatusLongPress].
-  final void Function(BuildContext context, types.Message)?
-      onMessageStatusLongPress;
+  final void Function(BuildContext context, types.Message)? onMessageStatusLongPress;
 
   /// See [Message.onMessageStatusTap].
   final void Function(BuildContext context, types.Message)? onMessageStatusTap;
@@ -234,8 +234,7 @@ class Chat extends StatefulWidget {
   final void Function(types.Message, bool visible)? onMessageVisibilityChanged;
 
   /// See [Message.onPreviewDataFetched].
-  final void Function(types.TextMessage, types.PreviewData)?
-      onPreviewDataFetched;
+  final void Function(types.TextMessage, types.PreviewData)? onPreviewDataFetched;
 
   /// See [Input.onSendPressed].
   final void Function(types.PartialText) onSendPressed;
@@ -356,8 +355,7 @@ class ChatState extends State<Chat> {
       );
 
   /// Scroll to the message with the specified [id].
-  void scrollToMessage(String id, {Duration? duration}) =>
-      _scrollController.scrollToIndex(
+  void scrollToMessage(String id, {Duration? duration}) => _scrollController.scrollToIndex(
         _autoScrollIndexById[id]!,
         duration: duration ?? scrollAnimationDuration,
       );
@@ -392,18 +390,16 @@ class ChatState extends State<Chat> {
                                   ) =>
                                       ChatList(
                                     isLastPage: widget.isLastPage,
-                                    itemBuilder: (Object item, int? index) =>
-                                        _messageBuilder(
+                                    itemBuilder: (Object item, int? index) => _messageBuilder(
                                       item,
                                       constraints,
                                       index,
                                     ),
                                     items: _chatMessages,
-                                    keyboardDismissBehavior:
-                                        widget.keyboardDismissBehavior,
+                                    keyboardDismissBehavior: widget.keyboardDismissBehavior,
                                     onEndReached: widget.onEndReached,
-                                    onEndReachedThreshold:
-                                        widget.onEndReachedThreshold,
+                                    onEndReachedThreshold: widget.onEndReachedThreshold,
+                                    onRefresh: widget.onRefresh,
                                     scrollController: _scrollController,
                                     scrollPhysics: widget.scrollPhysics,
                                   ),
@@ -497,10 +493,9 @@ class ChatState extends State<Chat> {
     } else {
       final map = object as Map<String, Object>;
       final message = map['message']! as types.Message;
-      final messageWidth =
-          widget.showUserAvatars && message.author.id != widget.user.id
-              ? min(constraints.maxWidth * 0.72, 440).floor()
-              : min(constraints.maxWidth * 0.78, 440).floor();
+      final messageWidth = widget.showUserAvatars && message.author.id != widget.user.id
+          ? min(constraints.maxWidth * 0.72, 440).floor()
+          : min(constraints.maxWidth * 0.78, 440).floor();
 
       return AutoScrollTag(
         controller: _scrollController,
@@ -526,8 +521,7 @@ class ChatState extends State<Chat> {
           onMessageStatusLongPress: widget.onMessageStatusLongPress,
           onMessageStatusTap: widget.onMessageStatusTap,
           onMessageTap: (context, tappedMessage) {
-            if (tappedMessage is types.ImageMessage &&
-                widget.disableImageGallery != true) {
+            if (tappedMessage is types.ImageMessage && widget.disableImageGallery != true) {
               _onImagePressed(tappedMessage);
             }
 

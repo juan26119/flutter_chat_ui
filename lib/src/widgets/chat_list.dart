@@ -1,7 +1,9 @@
 import 'package:diffutil_dart/diffutil.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
+import 'package:pull_to_refresh_flutter3/pull_to_refresh_flutter3.dart';
 
 import 'patched_sliver_animated_list.dart';
 import 'state/inherited_chat_theme.dart';
@@ -18,6 +20,7 @@ class ChatList extends StatefulWidget {
     this.keyboardDismissBehavior = ScrollViewKeyboardDismissBehavior.manual,
     this.onEndReached,
     this.onEndReachedThreshold,
+    required this.onRefresh,
     required this.scrollController,
     this.scrollPhysics,
   });
@@ -54,19 +57,20 @@ class ChatList extends StatefulWidget {
   /// Determines the physics of the scroll view.
   final ScrollPhysics? scrollPhysics;
 
+  final Future<void> Function() onRefresh;
+
   @override
   State<ChatList> createState() => _ChatListState();
 }
 
 /// [ChatList] widget state.
-class _ChatListState extends State<ChatList>
-    with SingleTickerProviderStateMixin {
+class _ChatListState extends State<ChatList> with SingleTickerProviderStateMixin {
   late final Animation<double> _animation = CurvedAnimation(
     curve: Curves.easeOutQuad,
     parent: _controller,
   );
-
   late final AnimationController _controller = AnimationController(vsync: this);
+  late final _refreshController = RefreshController();
 
   bool _isNextPageLoading = false;
   final GlobalKey<PatchedSliverAnimatedListState> _listKey =
@@ -94,37 +98,44 @@ class _ChatListState extends State<ChatList>
   }
 
   @override
-  Widget build(BuildContext context) =>
-      NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (widget.onEndReached == null || widget.isLastPage == true) {
-            return false;
-          }
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (widget.onEndReached == null || widget.isLastPage == true) {
+          return false;
+        }
 
-          if (notification.metrics.pixels >=
-              (notification.metrics.maxScrollExtent *
-                  (widget.onEndReachedThreshold ?? 0.75))) {
-            if (widget.items.isEmpty || _isNextPageLoading) return false;
+        if (notification.metrics.pixels >=
+            (notification.metrics.maxScrollExtent * (widget.onEndReachedThreshold ?? 0.75))) {
+          if (widget.items.isEmpty || _isNextPageLoading) return false;
 
-            _controller.duration = Duration.zero;
-            _controller.forward();
+          _controller.duration = Duration.zero;
+          _controller.forward();
+
+          setState(() {
+            _isNextPageLoading = true;
+          });
+
+          widget.onEndReached!().whenComplete(() {
+            _controller.duration = const Duration(milliseconds: 300);
+            _controller.reverse();
 
             setState(() {
-              _isNextPageLoading = true;
+              _isNextPageLoading = false;
             });
+          });
+        }
 
-            widget.onEndReached!().whenComplete(() {
-              _controller.duration = const Duration(milliseconds: 300);
-              _controller.reverse();
-
-              setState(() {
-                _isNextPageLoading = false;
-              });
-            });
-          }
-
-          return false;
+        return false;
+      },
+      child: SmartRefresher(
+        controller: _refreshController,
+        onRefresh: () async {
+          await widget.onRefresh();
+          _refreshController.refreshCompleted();
         },
+        header: const ClassicHeader(),
+        reverse: true,
         child: CustomScrollView(
           controller: widget.scrollController,
           keyboardDismissBehavior: widget.keyboardDismissBehavior,
@@ -147,8 +158,7 @@ class _ChatListState extends State<ChatList>
                 },
                 initialItemCount: widget.items.length,
                 key: _listKey,
-                itemBuilder: (_, index, animation) =>
-                    _newMessageBuilder(index, animation),
+                itemBuilder: (_, index, animation) => _newMessageBuilder(index, animation),
               ),
             ),
             SliverPadding(
@@ -172,9 +182,7 @@ class _ChatListState extends State<ChatList>
                                 backgroundColor: Colors.transparent,
                                 strokeWidth: 1.5,
                                 valueColor: AlwaysStoppedAnimation<Color>(
-                                  InheritedChatTheme.of(context)
-                                      .theme
-                                      .primaryColor,
+                                  InheritedChatTheme.of(context).theme.primaryColor,
                                 ),
                               )
                             : null,
@@ -186,7 +194,9 @@ class _ChatListState extends State<ChatList>
             ),
           ],
         ),
-      );
+      ),
+    );
+  }
 
   void _calculateDiffs(List<Object> oldList) async {
     final diffResult = calculateListDiff<Object>(
@@ -241,8 +251,7 @@ class _ChatListState extends State<ChatList>
     }
   }
 
-  Widget _removedMessageBuilder(Object item, Animation<double> animation) =>
-      SizeTransition(
+  Widget _removedMessageBuilder(Object item, Animation<double> animation) => SizeTransition(
         key: _valueKeyForItem(item),
         axisAlignment: -1,
         sizeFactor: animation.drive(CurveTween(curve: Curves.easeInQuad)),
@@ -286,8 +295,7 @@ class _ChatListState extends State<ChatList>
     }
   }
 
-  Key? _valueKeyForItem(Object item) =>
-      _mapMessage(item, (message) => ValueKey(message.id));
+  Key? _valueKeyForItem(Object item) => _mapMessage(item, (message) => ValueKey(message.id));
 
   T? _mapMessage<T>(Object maybeMessage, T Function(types.Message) f) {
     if (maybeMessage is Map<String, Object>) {
